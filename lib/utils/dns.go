@@ -13,8 +13,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"strconv"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var defaultNS = []string{"127.0.0.1", "::1"}
@@ -102,6 +105,17 @@ func DNSReadConfig(rdr io.Reader) (*DNSConfig, error) {
 		switch f[0] {
 		case nameserverParam: // add one name server
 			if len(f) > 1 && len(conf.Servers) < 3 { // system limit
+				testIPAddress := net.ParseIP(f[1])
+				if testIPAddress == nil {
+					log.Warnf("%v is not a valid IP address.\n", f[1])
+					continue
+				}
+				// kube-dns does not support IPv6 addresses, throws error
+				// during parsing them and it leads to discarding valid IPv4 addresses
+				if len(testIPAddress) == net.IPv6len {
+					log.Infoln("kube-dns does not support IPv6 addresses")
+					continue
+				}
 				conf.Servers = append(conf.Servers, f[1])
 			}
 
