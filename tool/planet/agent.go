@@ -269,6 +269,11 @@ func runAgent(conf *agent.Config, monitoringConf *monitoring.Config, leaderConf 
 		return trace.Wrap(err)
 	}
 
+	err = runEnvironmentLoop(ctx)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
 	signalc := make(chan os.Signal, 2)
 	signal.Notify(signalc, os.Interrupt, syscall.SIGTERM)
 

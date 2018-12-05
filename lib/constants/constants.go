@@ -18,6 +18,9 @@ const (
 	// CoreDNSConfigMapName is the location of the user supplied configmap for CoreDNS configuration
 	CoreDNSConfigMapName = "coredns"
 
+	// EnvironmentConfigMapName is the location of the user supplied configmap for cluster environment
+	EnvironmentConfigMapName = "cluster-env"
+
 	// ExitCodeUnknown is equivalent to EX_SOFTWARE as defined by sysexits(3)
 	ExitCodeUnknown = 70
 
