@@ -521,9 +521,10 @@ var coreDNSTemplate = `
 
 .:{{.Port}} {
   reload
-  bind {{range $bind := .ListenAddrs}}{{$bind}} {{end}}
+  bind{{range $bind := .ListenAddrs}} {{$bind}}{{- end}}
   errors
-  hosts /etc/coredns/coredns.hosts { {{range $hostname, $ips := .Hosts}}{{range $ip := $ips}}
+  hosts /etc/coredns/coredns.hosts {
+    {{- range $hostname, $ips := .Hosts}}{{range $ip := $ips}}
     {{$ip}} {{$hostname}}{{end}}{{end}}
     fallthrough
   }

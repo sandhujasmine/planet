@@ -1,8 +1,6 @@
 package box
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -11,8 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/gravitational/go-udev"
@@ -78,12 +74,13 @@ func Start(cfg Config) (*Box, error) {
 		return nil, err
 	}
 
-	log.Infof("starting container process in '%v'", rootfs)
+	log.Infof("Starting container process in %q.", rootfs)
 
 	if len(cfg.EnvFiles) != 0 {
 		for _, ef := range cfg.EnvFiles {
-			log.Infof("writing environment file: %v", ef.Env)
-			if err := WriteEnvironment(filepath.Join(rootfs, ef.Path), ef.Env); err != nil {
+			path := filepath.Join(rootfs, ef.Path)
+			log.WithField("path", path).Infof("New environment file: %v.", ef.Env)
+			if err := WriteEnvironment(path, ef.Env); err != nil {
 				return nil, err
 			}
 		}
@@ -91,8 +88,9 @@ func Start(cfg Config) (*Box, error) {
 
 	if len(cfg.Files) != 0 {
 		for _, f := range cfg.Files {
-			log.Infof("writing file to: %v", filepath.Join(rootfs, f.Path))
-			if err := writeFile(filepath.Join(rootfs, f.Path), f); err != nil {
+			path := filepath.Join(rootfs, f.Path)
+			log.WithField("path", path).Info("New file.")
+			if err := writeFile(path, f); err != nil {
 				return nil, err
 			}
 		}
@@ -436,53 +434,6 @@ func writeFile(path string, fi File) error {
 		}
 	}
 	return nil
-}
-
-// WriteEnvironment writes provided environment variables to a file at the
-// specified path.
-func WriteEnvironment(path string, env EnvVars) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return trace.Wrap(err)
-	}
-	f, err := os.Create(path)
-	if err != nil {
-		return trace.Wrap(err)
-	}
-	defer f.Close()
-	for _, v := range env {
-		// quote value as it may contain spaces
-		if _, err := fmt.Fprintf(f, "%v=%q\n", v.Name, v.Val); err != nil {
-			return trace.Wrap(err)
-		}
-	}
-	return nil
-}
-
-// ReadEnvironment returns a list of all environment variables read from the file
-// at the specified path.
-func ReadEnvironment(path string) (vars EnvVars, err error) {
-	env, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	scanner := bufio.NewScanner(bytes.NewReader(env))
-	for scanner.Scan() {
-		keyVal := strings.SplitN(scanner.Text(), "=", 2)
-		if len(keyVal) != 2 {
-			continue
-		}
-		// the value may be quoted (if the file was previously written by WriteEnvironment above)
-		val, err := strconv.Unquote(keyVal[1])
-		if err != nil {
-			vars.Upsert(keyVal[0], keyVal[1])
-		} else {
-			vars.Upsert(keyVal[0], val)
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, trace.Wrap(err)
-	}
-	return vars, nil
 }
 
 func checkPath(path string, executable bool) (absPath string, err error) {

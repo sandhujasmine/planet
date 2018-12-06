@@ -2,13 +2,15 @@ package main
 
 import (
 	"context"
+	"reflect"
 	"time"
 
+	"github.com/gravitational/planet/lib/box"
 	"github.com/gravitational/planet/lib/constants"
 	"github.com/gravitational/planet/lib/utils"
+
 	"github.com/gravitational/satellite/cmd"
 	"github.com/gravitational/trace"
-
 	log "github.com/sirupsen/logrus"
 	api "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,7 +23,7 @@ import (
 
 func runEnvironmentLoop(ctx context.Context) error {
 	// FIXME: use the appropriate kubeconfig
-	client, err := cmd.GetKubeClientFromPath(constants.CoreDNSConfigPath)
+	client, err := cmd.GetKubeClientFromPath(constants.SchedulerConfigPath)
 	if err != nil {
 		return trace.Wrap(err)
 	}
@@ -59,28 +61,75 @@ func (r environMonitor) monitorEnvironmentConfigMap(ctx context.Context) {
 }
 
 func (r environMonitor) add(obj interface{}) {
+	updateEnvironmentConfigMap(nil, obj)
 }
 
 func (r environMonitor) update(oldObj, newObj interface{}) {
-	switch configmap := newObj.(type) {
-	case *api.ConfigMap:
-		if err := updateEnvironment(configmap.Data); err != nil {
-			log.WithError(err).Warn("Failed to update environment.")
-		}
+	updateEnvironmentConfigMap(oldObj, newObj)
+}
+
+func updateEnvironmentConfigMap(oldObj, newObj interface{}) {
+	oldConfigmap, ok := oldObj.(*api.ConfigMap)
+	if !ok && oldObj != nil {
+		log.Warnf("Unexpected resource type %T.", oldObj)
+	}
+	newConfigmap, ok := newObj.(*api.ConfigMap)
+	if !ok {
+		log.Warnf("Unexpected resource type %T.", newObj)
+	}
+	if oldObj != nil && reflect.DeepEqual(oldConfigmap.Data, newConfigmap.Data) {
+		// Ignore idempotent update
+		// TODO: check the container environment to avoid restarting services
+		// on restart of the agent service
+		return
+	}
+	if err := updateEnvironment(context.TODO(), newConfigmap.Data); err != nil {
+		log.WithError(err).Warn("Failed to update environment.")
 	}
 }
 
-func updateEnvironment(kvs map[string]string) error {
+func updateEnvironment(ctx context.Context, kvs map[string]string) error {
 	log.WithField("kvs", kvs).Info("Update environment.")
-	// TODO: read and update the list of environment variables
 
-	var environ string
-	err := utils.SafeWriteFile(ContainerEnvironmentFile, []byte(environ), SharedFileMask)
+	env, err := box.ReadEnvironment(ContainerEnvironmentFile)
 	if err != nil {
 		return trace.Wrap(err)
 	}
 
-	// TODO: restart all affected systemd units
+	for k, v := range kvs {
+		env.Upsert(k, v)
+	}
+
+	err = utils.SafeWriteFile(ContainerEnvironmentFile, env, SharedFileMask)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	for _, service := range []string{
+		"etcd.service",
+		"kube-apiserver.service",
+		"kube-kubelet.service",
+		"kube-proxy.service",
+		"kube-controller-manager.service",
+		"kube-scheduler.service",
+		"flanneld.service",
+		"serf.service",
+		"docker.service",
+	} {
+		active, out, err := utils.ServiceIsActive(ctx, service)
+		if err != nil {
+			log.Warnf("Failed to check status of %q: %s (%v).", service, out, err)
+			continue
+		}
+		if !active {
+			continue
+		}
+		log.WithField("service", service).Info("Will restart.")
+		out, err = utils.ServiceCtl(ctx, "restart", service, utils.Blocking(true))
+		if err != nil {
+			log.Warnf("Failed to restart %q: %s (%v).", service, out, err)
+		}
+	}
 
 	return nil
 }
