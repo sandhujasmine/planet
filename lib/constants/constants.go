@@ -11,6 +11,8 @@ const (
 	KubeletConfigPath = "/etc/kubernetes/kubelet.kubeconfig"
 	// CoreDNSConfigPath is the path to coredns configuration file
 	CoreDNSConfigPath = "/etc/kubernetes/coredns.kubeconfig"
+	// AgentConfigPath is the path to agent configuration file
+	AgentConfigPath = "/etc/kubernetes/planet-agent.kubeconfig"
 
 	// DNSResourceName specifies the name for the DNS resources
 	DNSResourceName = "kube-dns"

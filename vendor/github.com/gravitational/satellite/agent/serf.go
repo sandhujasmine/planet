@@ -77,8 +77,8 @@ func (r *retryingClient) Join(peers []string, replay bool) (int, error) {
 
 // UpdateTags will modify the tags on a running serf agent
 func (r *retryingClient) UpdateTags(tags map[string]string, delTags []string) error {
-	if r.client.IsClosed() {
-		return nil
+	if err := r.reinit(); err != nil {
+		return trace.Wrap(err)
 	}
 	return r.client.UpdateTags(tags, delTags)
 }

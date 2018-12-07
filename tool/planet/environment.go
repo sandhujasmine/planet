@@ -22,8 +22,7 @@ import (
 )
 
 func runEnvironmentLoop(ctx context.Context) error {
-	// FIXME: use the appropriate kubeconfig
-	client, err := cmd.GetKubeClientFromPath(constants.SchedulerConfigPath)
+	client, err := cmd.GetKubeClientFromPath(constants.AgentConfigPath)
 	if err != nil {
 		return trace.Wrap(err)
 	}
