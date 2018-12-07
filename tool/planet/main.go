@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -33,6 +34,10 @@ import (
 func main() {
 	var exitCode int
 	var err error
+
+	// Workaround the issue described here:
+	// https://github.com/kubernetes/kubernetes/issues/17162
+	_ = flag.CommandLine.Parse([]string{})
 
 	if err = run(); err != nil {
 		if errExit, ok := trace.Unwrap(err).(*box.ExitError); ok {

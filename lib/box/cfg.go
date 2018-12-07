@@ -182,8 +182,8 @@ func (vars *EnvVars) Environ() (environ []string) {
 	return environ
 }
 
-// WriteTo writes the environment variables in the specified writer w.
-// WriteTo implements io.WriterTor
+// WriteTo writes the environment variables to the specified writer w.
+// WriteTo implements io.WriterTo
 func (vars EnvVars) WriteTo(w io.Writer) (n int64, err error) {
 	cw := &countingWriter{}
 	for _, v := range vars {

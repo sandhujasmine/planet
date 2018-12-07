@@ -82,8 +82,7 @@ func startLeaderClient(conf *LeaderConfig, errorC chan error) (leaderClient io.C
 	}
 
 	if conf.Role == RoleMaster {
-		var etcdapi etcd.KeysAPI
-		etcdapi = etcd.NewKeysAPI(etcdClient)
+		etcdapi := etcd.NewKeysAPI(etcdClient)
 		// Set initial value of election participation mode
 		_, err = etcdapi.Set(context.TODO(), conf.ElectionKey,
 			strconv.FormatBool(conf.ElectionEnabled),
@@ -130,6 +129,7 @@ func startLeaderClient(conf *LeaderConfig, errorC chan error) (leaderClient io.C
 			log.Infof("adding voter for IP %v", conf.PublicIP)
 			ctx, cancelVoter = context.WithCancel(context.TODO())
 			if err = client.AddVoter(ctx, conf.LeaderKey, conf.PublicIP, conf.Term); err != nil {
+				cancelVoter()
 				return nil, trace.Wrap(err)
 			}
 		case false:
@@ -155,6 +155,7 @@ func startLeaderClient(conf *LeaderConfig, errorC chan error) (leaderClient io.C
 			ctx, cancelVoter = context.WithCancel(context.TODO())
 			if err = client.AddVoter(ctx, conf.LeaderKey, conf.PublicIP, conf.Term); err != nil {
 				log.Errorf("failed to add voter for %v: %v", conf.PublicIP, trace.DebugReport(err))
+				cancelVoter()
 				errorC <- err
 			}
 		case false:
@@ -234,8 +235,14 @@ func runAgent(conf *agent.Config, monitoringConf *monitoring.Config, leaderConf 
 	}
 	defer monitoringAgent.Close()
 
-	monitoring.AddMetrics(monitoringAgent, monitoringConf)
-	monitoring.AddCheckers(monitoringAgent, monitoringConf)
+	err = monitoring.AddMetrics(monitoringAgent, monitoringConf)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	err = monitoring.AddCheckers(monitoringAgent, monitoringConf)
+	if err != nil {
+		return trace.Wrap(err)
+	}
 	err = monitoringAgent.Start()
 	if err != nil {
 		return trace.Wrap(err)

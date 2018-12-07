@@ -27,12 +27,20 @@ func runEnvironmentLoop(ctx context.Context) error {
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	m := environMonitor{client: client}
-	go m.monitorEnvironmentConfigMap(ctx)
+	m := &environMonitor{
+		ctx:    ctx,
+		client: client,
+		// update request channel services a request at a time
+		updateCh:  make(chan map[string]string, 1),
+		requestCh: make(chan map[string]string),
+	}
+	go m.monitorEnvironmentConfigMap()
+	go m.updateEnvironmentLoop()
+	go m.requestLoop()
 	return nil
 }
 
-func (r environMonitor) monitorEnvironmentConfigMap(ctx context.Context) {
+func (r environMonitor) monitorEnvironmentConfigMap() {
 	_, controller := cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -57,18 +65,18 @@ func (r environMonitor) monitorEnvironmentConfigMap(ctx context.Context) {
 			UpdateFunc: r.update,
 		},
 	)
-	controller.Run(ctx.Done())
+	controller.Run(r.ctx.Done())
 }
 
-func (r environMonitor) add(obj interface{}) {
-	updateEnvironmentConfigMap(nil, obj)
+func (r *environMonitor) add(obj interface{}) {
+	r.updateEnvironmentConfigMap(nil, obj)
 }
 
-func (r environMonitor) update(oldObj, newObj interface{}) {
-	updateEnvironmentConfigMap(oldObj, newObj)
+func (r *environMonitor) update(oldObj, newObj interface{}) {
+	r.updateEnvironmentConfigMap(oldObj, newObj)
 }
 
-func updateEnvironmentConfigMap(oldObj, newObj interface{}) {
+func (r *environMonitor) updateEnvironmentConfigMap(oldObj, newObj interface{}) {
 	oldConfigmap, ok := oldObj.(*api.ConfigMap)
 	if !ok && oldObj != nil {
 		log.Warnf("Unexpected resource type %T.", oldObj)
@@ -79,21 +87,70 @@ func updateEnvironmentConfigMap(oldObj, newObj interface{}) {
 	}
 	if oldObj != nil && reflect.DeepEqual(oldConfigmap.Data, newConfigmap.Data) {
 		// Ignore idempotent update
-		// TODO: check the container environment to avoid restarting services
-		// on restart of the agent service
 		return
 	}
-	if err := updateEnvironment(context.TODO(), newConfigmap.Data); err != nil {
-		log.WithError(err).Warn("Failed to update environment.")
+	select {
+	case <-r.ctx.Done():
+		return
+	case r.requestCh <- newConfigmap.Data:
+		// Handling of updateCh must be snappy, will not drop
+	}
+}
+
+// requestLoop accepts requests to update environment.
+// If it's able to pass on the updated environment immediately, its job is done.
+// Otherwise, it persists the value and tries to pass it on in a loop until successful
+// or the context is cancelled.
+// The purpose is maintaining the last update request and guaranteed delivery
+// of the update
+func (r *environMonitor) requestLoop() {
+	var kvs map[string]string
+	ticker := time.NewTicker(5 * time.Second)
+	var tickerCh <-chan time.Time
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		case update := <-r.requestCh:
+			kvs = update
+			// Schedule the update
+			tickerCh = ticker.C
+		case <-tickerCh:
+			select {
+			case <-r.ctx.Done():
+				return
+			case r.updateCh <- kvs:
+				kvs = nil
+				tickerCh = nil
+			default:
+				// Try again
+			}
+		}
+	}
+}
+
+// updateEnvironmentLoop runs the actual environment update loop.
+// It is a blocking operation, which, upon receiving new environment,
+// restarts all relevant services one by one, until all have
+// been restarted
+func (r *environMonitor) updateEnvironmentLoop() {
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		case kvs := <-r.updateCh:
+			if err := updateEnvironment(r.ctx, kvs); err != nil {
+				log.WithError(err).Warn("Failed to update environment.")
+			}
+		}
 	}
 }
 
 func updateEnvironment(ctx context.Context, kvs map[string]string) error {
 	log.WithField("kvs", kvs).Info("Update environment.")
-
 	env, err := box.ReadEnvironment(ContainerEnvironmentFile)
 	if err != nil {
-		return trace.Wrap(err)
+		return trace.Wrap(err, "failed to read cluster environment file")
 	}
 
 	for k, v := range kvs {
@@ -102,38 +159,41 @@ func updateEnvironment(ctx context.Context, kvs map[string]string) error {
 
 	err = utils.SafeWriteFile(ContainerEnvironmentFile, env, SharedFileMask)
 	if err != nil {
-		return trace.Wrap(err)
+		return trace.Wrap(err, "failed to write cluster environment file")
 	}
 
 	for _, service := range []string{
+		"serf.service",
+		"flanneld.service",
+		"docker.service",
 		"etcd.service",
 		"kube-apiserver.service",
 		"kube-kubelet.service",
 		"kube-proxy.service",
 		"kube-controller-manager.service",
 		"kube-scheduler.service",
-		"flanneld.service",
-		"serf.service",
-		"docker.service",
 	} {
+		log := log.WithField("service", service)
 		active, out, err := utils.ServiceIsActive(ctx, service)
 		if err != nil {
-			log.Warnf("Failed to check status of %q: %s (%v).", service, out, err)
+			log.Warnf("Failed to check status: %s (%v).", out, err)
 			continue
 		}
 		if !active {
 			continue
 		}
-		log.WithField("service", service).Info("Will restart.")
+		log.Info("Will restart.")
 		out, err = utils.ServiceCtl(ctx, "restart", service, utils.Blocking(true))
 		if err != nil {
-			log.Warnf("Failed to restart %q: %s (%v).", service, out, err)
+			log.Warnf("Failed to restart: %s (%v).", out, err)
 		}
 	}
-
 	return nil
 }
 
 type environMonitor struct {
-	client *kube.Clientset
+	ctx       context.Context
+	client    *kube.Clientset
+	updateCh  chan map[string]string
+	requestCh chan map[string]string
 }
