@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	stdlog "log"
+	"log/syslog"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -28,26 +31,25 @@ import (
 	"github.com/gravitational/version"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	log "github.com/sirupsen/logrus"
+	logsyslog "github.com/sirupsen/logrus/hooks/syslog"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 func main() {
-	var exitCode int
 	var err error
 
 	// Workaround the issue described here:
 	// https://github.com/kubernetes/kubernetes/issues/17162
 	_ = flag.CommandLine.Parse([]string{})
 
-	if err = run(); err != nil {
-		if errExit, ok := trace.Unwrap(err).(*box.ExitError); ok {
-			exitCode = errExit.Code
-		} else {
-			log.Errorf("Failed to run: %v.", trace.DebugReport(err))
-			exitCode = 1
-		}
+	if err = run(); err == nil {
+		return
 	}
-	os.Exit(exitCode)
+	stdlog.Println("Failed to run: ", trace.DebugReport(err))
+	if errExit, ok := trace.Unwrap(err).(*box.ExitError); ok {
+		os.Exit(errExit.Code)
+	}
+	os.Exit(255)
 }
 
 func run() error {
@@ -212,6 +214,11 @@ func run() error {
 		cleaderResume        = cleader.Command("resume", "Resume leader election participation for this node")
 		cleaderView          = cleader.Command("view", "Display the IP address of the active master")
 		cleaderViewKey       = cleaderView.Flag("leader-key", "Etcd key holding the new leader").Required().String()
+
+		// environment variables
+		cenvars         = app.Command("envars", "Manage environment variables in container").Hidden()
+		cenvarsUpdate   = cenvars.Command("update", "Update environment variables")
+		cenvarsRollback = cenvars.Command("rollback", "Rollback environment variables to last good state")
 	)
 
 	args, extraArgs := cstrings.SplitAt(os.Args[1:], "--")
@@ -221,13 +228,7 @@ func run() error {
 		return err
 	}
 
-	if *debug {
-		log.SetOutput(os.Stderr)
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetOutput(os.Stderr)
-		log.SetLevel(log.WarnLevel)
-	}
+	initLogging(*debug)
 
 	if *profileEndpoint != "" {
 		go func() {
@@ -400,6 +401,13 @@ func run() error {
 		} else {
 			err = startAndWait(config)
 		}
+
+	// envars management
+	case cenvarsUpdate.FullCommand():
+		err = updateEnvironment()
+
+	case cenvarsRollback.FullCommand():
+		err = restoreEnvironment()
 
 	// "init" command
 	case cinit.FullCommand():
@@ -671,4 +679,24 @@ func toEtcdGatewayList(list kv.KeyVal) (peers string) {
 		addrs = append(addrs, fmt.Sprintf("%v:2379", addr))
 	}
 	return strings.Join(addrs, ",")
+}
+
+// InitLogger configures the global logger for a given purpose / verbosity level
+func initLogging(debug bool) {
+	level := log.WarnLevel
+	if debug {
+		level = log.DebugLevel
+	}
+	log.StandardLogger().SetHooks(make(log.LevelHooks))
+	formatter := &trace.TextFormatter{DisableTimestamp: true}
+	log.SetFormatter(formatter)
+	log.SetLevel(level)
+	hook, err := logsyslog.NewSyslogHook("", "", syslog.LOG_WARNING, "")
+	if err != nil {
+		// syslog not available
+		log.SetOutput(os.Stderr)
+		return
+	}
+	log.AddHook(hook)
+	log.SetOutput(ioutil.Discard)
 }

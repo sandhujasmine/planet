@@ -183,7 +183,7 @@ func writeLocalLeader(target string, masterIP string) error {
 	err := ioutil.WriteFile(
 		target,
 		[]byte(contents),
-		SharedFileMask,
+		constants.SharedReadMask,
 	)
 	return trace.Wrap(err)
 }
@@ -272,11 +272,6 @@ func runAgent(conf *agent.Config, monitoringConf *monitoring.Config, leaderConf 
 		Zones:               monitoringConf.DNSZones,
 		Port:                DNSPort,
 	})
-	if err != nil {
-		return trace.Wrap(err)
-	}
-
-	err = runEnvironmentLoop(ctx)
 	if err != nil {
 		return trace.Wrap(err)
 	}

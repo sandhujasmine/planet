@@ -201,7 +201,7 @@ func start(config *Config, monitorc chan<- bool) (*runtimeContext, error) {
 		config.Files = append(config.Files, box.File{
 			Path:     HostnameFile,
 			Contents: strings.NewReader(config.Hostname),
-			Mode:     SharedReadWriteMask,
+			Mode:     constants.SharedReadWriteMask,
 		})
 	}
 
@@ -441,11 +441,11 @@ func addKubeConfig(config *Config) error {
 		return trace.Wrap(err)
 	}
 	path := filepath.Join(config.Rootfs, constants.KubectlConfigPath)
-	err = os.MkdirAll(filepath.Dir(path), SharedDirMask)
+	err = os.MkdirAll(filepath.Dir(path), constants.SharedDirMask)
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	err = ioutil.WriteFile(path, kubeConfig, SharedFileMask)
+	err = ioutil.WriteFile(path, kubeConfig, constants.SharedReadMask)
 	if err != nil {
 		return trace.Wrap(err)
 	}
@@ -484,7 +484,7 @@ func setCoreDNS(config *Config) error {
 		return trace.Wrap(err)
 	}
 
-	err = ioutil.WriteFile(filepath.Join(config.Rootfs, CoreDNSConf), []byte(corednsConfig), SharedFileMask)
+	err = ioutil.WriteFile(filepath.Join(config.Rootfs, CoreDNSConf), []byte(corednsConfig), constants.SharedReadMask)
 	if err != nil {
 		return trace.Wrap(err)
 	}
@@ -601,7 +601,7 @@ func copyResolvFile(cfg utils.DNSConfig, destination string, upstreamNameservers
 
 	resolv, err := os.OpenFile(
 		destination,
-		os.O_RDWR|os.O_CREATE|os.O_TRUNC, SharedFileMask,
+		os.O_RDWR|os.O_CREATE|os.O_TRUNC, constants.SharedReadMask,
 	)
 	if err != nil {
 		return trace.Wrap(err)
@@ -624,7 +624,7 @@ func setHosts(config *Config, entries []utils.HostEntry) error {
 	config.Files = append(config.Files, box.File{
 		Path:     HostsFile,
 		Contents: out,
-		Mode:     SharedReadWriteMask,
+		Mode:     constants.SharedReadWriteMask,
 	})
 	return nil
 }
@@ -666,11 +666,12 @@ func setupFlannel(config *Config) {
 }
 
 const (
-	ETCDWorkDir              = "/ext/etcd"
-	ETCDProxyDir             = "/ext/etcd/proxy"
-	DockerWorkDir            = "/ext/docker"
-	RegistryWorkDir          = "/ext/registry"
-	ContainerEnvironmentFile = "/etc/container-environment"
+	ETCDWorkDir                    = "/ext/etcd"
+	ETCDProxyDir                   = "/ext/etcd/proxy"
+	DockerWorkDir                  = "/ext/docker"
+	RegistryWorkDir                = "/ext/registry"
+	ContainerEnvironmentFile       = "/etc/container-environment"
+	ContainerEnvironmentFileBackup = "/etc/container-environment.old"
 )
 
 func checkRequiredMounts(cfg *Config) error {

@@ -236,15 +236,6 @@ const (
 	// PlanetResolv is planet local resolver
 	PlanetResolv = "resolv.gravity.conf"
 
-	// SharedFileMask is file mask for shared file
-	SharedFileMask = 0644
-
-	// SharedDirMask is a permissions mask for a shared directory
-	SharedDirMask = 0755
-
-	// SharedReadWriteMask is a mask for a shared file with read/write access for everyone
-	SharedReadWriteMask = 0666
-
 	// CoreDNSConf is the location of the coredns configuration file within planet
 	CoreDNSConf = "/etc/coredns/coredns.conf"
 

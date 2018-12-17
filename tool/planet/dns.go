@@ -201,7 +201,7 @@ func (c *coreDNSMonitor) processCoreDNSConfigChange(newObj interface{}) {
 		return
 	}
 
-	err = utils.SafeWriteFile(filepath.Join(CoreDNSClusterConf), strings.NewReader(config), SharedFileMask)
+	err = utils.SafeWriteFile(filepath.Join(CoreDNSClusterConf), strings.NewReader(config), constants.SharedReadMask)
 	if err != nil {
 		log.Errorf("Failed to write coredns configuration to %v: %v", CoreDNSClusterConf, err)
 	}
