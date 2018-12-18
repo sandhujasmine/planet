@@ -7,8 +7,6 @@ all: build
 	mkdir -p $(ROOTFS)/etc/coredns/configmaps/ $(ROOTFS)/usr/lib/sysusers.d/
 	cp -af ./coredns.service $(ROOTFS)/lib/systemd/system/
 	ln -sf /lib/systemd/system/coredns.service  $(ROOTFS)/lib/systemd/system/multi-user.target.wants/
-	# Disable dnsmasq
-	rm -f $(ROOTFS)/lib/systemd/system/multi-user.target.wants/dnsmasq.service
 
 build:
 	@echo "\\n---> Building CoreDNS:\\n"

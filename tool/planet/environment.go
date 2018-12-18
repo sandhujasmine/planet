@@ -7,57 +7,30 @@ import (
 	"github.com/gravitational/planet/lib/constants"
 	"github.com/gravitational/planet/lib/utils"
 
-	"github.com/gravitational/satellite/cmd"
 	"github.com/gravitational/trace"
 	log "github.com/sirupsen/logrus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func updateEnvironment() error {
-	log.Info("Update environment.")
+func updateEnvironment(kvs map[string]string) error {
+	log.WithField("kvs", kvs).Info("Update environment.")
 	// Create a backup of the current environment
 	err := utils.CopyFileWithPerms(ContainerEnvironmentFileBackup, ContainerEnvironmentFile, constants.SharedReadMask)
 	if err != nil {
 		return trace.Wrap(err)
 	}
 
-	client, err := cmd.GetKubeClientFromPath(constants.AgentConfigPath)
-	if err != nil {
-		return trace.Wrap(err)
-	}
-
-	configmap, err := client.CoreV1().ConfigMaps(metav1.NamespaceSystem).
-		Get(constants.EnvironmentConfigMapName, metav1.GetOptions{})
-	if err != nil {
-		log.WithError(err).Warn("Failed to fetch environment variables configmap.")
-		return utils.ConvertError(err, "failed to fetch environment variables configmap")
-	}
-
-	log.WithField("kvs", configmap.Data).Info("Update environment.")
-
 	env, err := box.ReadEnvironment(ContainerEnvironmentFile)
 	if err != nil {
 		return trace.Wrap(err, "failed to read cluster environment file")
 	}
 
-	for k, v := range configmap.Data {
+	for k, v := range kvs {
 		env.Upsert(k, v)
 	}
 
 	err = utils.SafeWriteFile(ContainerEnvironmentFile, env, constants.SharedReadMask)
 	if err != nil {
 		return trace.Wrap(err, "failed to write cluster environment file")
-	}
-
-	return restartServices(context.Background())
-}
-
-func restoreEnvironment() error {
-	log.Info("Rollback environment.")
-	// Restore environment from the backup
-	err := utils.CopyFileWithPerms(ContainerEnvironmentFile, ContainerEnvironmentFileBackup, constants.SharedReadMask)
-	if err != nil && !trace.IsNotFound(err) {
-		return trace.Wrap(err)
 	}
 
 	return restartServices(context.Background())

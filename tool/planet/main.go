@@ -216,9 +216,9 @@ func run() error {
 		cleaderViewKey       = cleaderView.Flag("leader-key", "Etcd key holding the new leader").Required().String()
 
 		// environment variables
-		cenvars         = app.Command("envars", "Manage environment variables in container").Hidden()
-		cenvarsUpdate   = cenvars.Command("update", "Update environment variables")
-		cenvarsRollback = cenvars.Command("rollback", "Rollback environment variables to last good state")
+		cenvars          = app.Command("envars", "Manage environment variables in container").Hidden()
+		cenvarsUpdate    = cenvars.Command("update", "Update environment variables")
+		cenvarsUpdateKvs = cenvarsUpdate.Flag("var", "Environment variable as key=value pair. Can be specified multiple times").StringMap()
 	)
 
 	args, extraArgs := cstrings.SplitAt(os.Args[1:], "--")
@@ -404,10 +404,7 @@ func run() error {
 
 	// envars management
 	case cenvarsUpdate.FullCommand():
-		err = updateEnvironment()
-
-	case cenvarsRollback.FullCommand():
-		err = restoreEnvironment()
+		err = updateEnvironment(*cenvarsUpdateKvs)
 
 	// "init" command
 	case cinit.FullCommand():
