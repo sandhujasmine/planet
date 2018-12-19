@@ -299,16 +299,24 @@ func leaderResume(publicIP, electionKey string, etcd *etcdconf.Config) error {
 }
 
 func leaderView(leaderKey string, etcd *etcdconf.Config) error {
+	addr, err := getLeader(context.TODO(), leaderKey, etcd)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	fmt.Println(addr)
+	return nil
+}
+
+func getLeader(ctx context.Context, key string, etcd *etcdconf.Config) (leaderAddr string, err error) {
 	client, err := getEtcdClient(etcd)
 	if err != nil {
-		return trace.Wrap(err)
+		return "", trace.Wrap(err)
 	}
-	resp, err := client.Get(context.TODO(), leaderKey, nil)
+	resp, err := client.Get(ctx, key, nil)
 	if err != nil {
-		return trace.Wrap(err)
+		return "", trace.Wrap(err)
 	}
-	fmt.Println(resp.Node.Value)
-	return nil
+	return resp.Node.Value, nil
 }
 
 func enableElection(publicIP, electionKey string, enabled bool, etcd *etcdconf.Config) error {

@@ -666,12 +666,11 @@ func setupFlannel(config *Config) {
 }
 
 const (
-	ETCDWorkDir                    = "/ext/etcd"
-	ETCDProxyDir                   = "/ext/etcd/proxy"
-	DockerWorkDir                  = "/ext/docker"
-	RegistryWorkDir                = "/ext/registry"
-	ContainerEnvironmentFile       = "/etc/container-environment"
-	ContainerEnvironmentFileBackup = "/etc/container-environment.old"
+	ETCDWorkDir              = "/ext/etcd"
+	ETCDProxyDir             = "/ext/etcd/proxy"
+	DockerWorkDir            = "/ext/docker"
+	RegistryWorkDir          = "/ext/registry"
+	ContainerEnvironmentFile = "/etc/container-environment"
 )
 
 func checkRequiredMounts(cfg *Config) error {
